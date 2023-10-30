@@ -655,8 +655,7 @@ public class MultipleTableJobConfigParser {
                         actionConfig);
         if (!isStartWithSavePoint) {
             handleSaveMode(sink);
-        }
-        if (isStartWithSavePoint) {
+        } else {
             handleSchemaSaveMode(sink);
         }
         sinkAction.setParallelism(parallelism);
