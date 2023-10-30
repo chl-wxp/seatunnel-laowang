@@ -656,6 +656,9 @@ public class MultipleTableJobConfigParser {
         if (!isStartWithSavePoint) {
             handleSaveMode(sink);
         }
+        if (isStartWithSavePoint) {
+            handleSchemaSaveMode(sink);
+        }
         sinkAction.setParallelism(parallelism);
         return sinkAction;
     }
@@ -663,15 +666,41 @@ public class MultipleTableJobConfigParser {
     public static void handleSaveMode(SeaTunnelSink<?, ?, ?, ?> sink) {
         if (SupportSaveMode.class.isAssignableFrom(sink.getClass())) {
             SupportSaveMode saveModeSink = (SupportSaveMode) sink;
-            Optional<SaveModeHandler> saveModeHandler = saveModeSink.getSaveModeHandler();
-            if (saveModeHandler.isPresent()) {
-                try (SaveModeHandler handler = saveModeHandler.get()) {
-                    new SaveModeExecuteWrapper(handler).execute();
-                } catch (Exception e) {
-                    throw new SeaTunnelRuntimeException(HANDLE_SAVE_MODE_FAILED, e);
+            try (SaveModeHandler saveModeHandler = saveModeSink.getSaveModeHandler()) {
+                if (saveModeHandler != null) {
+                    saveModeHandler.handleSaveMode();
                 }
+            } catch (Exception e) {
+                throw new SeaTunnelRuntimeException(HANDLE_SAVE_MODE_FAILED, e);
             }
         }
+    }
+
+    public static void handleSchemaSaveMode(SeaTunnelSink<?, ?, ?, ?> sink) {
+        if (SupportSaveMode.class.isAssignableFrom(sink.getClass())) {
+            SupportSaveMode saveModeSink = (SupportSaveMode) sink;
+            try (SaveModeHandler saveModeHandler = saveModeSink.getSaveModeHandler()) {
+                if (saveModeHandler != null) {
+                    saveModeHandler.handleSchemaSaveMode();
+                }
+            } catch (Exception e) {
+                throw new SeaTunnelRuntimeException(HANDLE_SAVE_MODE_FAILED, e);
+            }
+        }
+    }
+
+    public static SchemaSaveMode getSchemaSaveMode(SeaTunnelSink<?, ?, ?, ?> sink) {
+        if (SupportSaveMode.class.isAssignableFrom(sink.getClass())) {
+            SupportSaveMode saveModeSink = (SupportSaveMode) sink;
+            try (SaveModeHandler saveModeHandler = saveModeSink.getSaveModeHandler()) {
+                if (saveModeHandler != null) {
+                    return saveModeHandler.getSchemaSaveMode();
+                }
+            } catch (Exception e) {
+                throw new SeaTunnelRuntimeException(HANDLE_SAVE_MODE_FAILED, e);
+            }
+        }
+        return null;
     }
 
     private List<URL> getSourcePluginJarPaths(Config sourceConfig) {
