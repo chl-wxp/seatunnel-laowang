@@ -23,6 +23,7 @@ import org.apache.seatunnel.api.common.CommonOptions;
 import org.apache.seatunnel.api.configuration.ReadonlyConfig;
 import org.apache.seatunnel.api.env.EnvCommonOptions;
 import org.apache.seatunnel.api.sink.SaveModeExecuteWrapper;
+import org.apache.seatunnel.api.env.ParsingMode;
 import org.apache.seatunnel.api.sink.SaveModeHandler;
 import org.apache.seatunnel.api.sink.SeaTunnelSink;
 import org.apache.seatunnel.api.sink.SupportMultiTableSink;
@@ -656,7 +657,7 @@ public class MultipleTableJobConfigParser {
         if (!isStartWithSavePoint) {
             handleSaveMode(sink);
         } else {
-            handleSchemaSaveMode(sink);
+            handleSchemaSaveModeWithRestore(sink);
         }
         sinkAction.setParallelism(parallelism);
         return sinkAction;
@@ -675,6 +676,17 @@ public class MultipleTableJobConfigParser {
         }
     }
 
+    public static void handleSchemaSaveModeWithRestore(SeaTunnelSink<?, ?, ?, ?> sink) {
+        if (SupportSaveMode.class.isAssignableFrom(sink.getClass())) {
+            SupportSaveMode saveModeSink = (SupportSaveMode) sink;
+            try (SaveModeHandler saveModeHandler = saveModeSink.getSaveModeHandler()) {
+                if (saveModeHandler != null) {
+                    saveModeHandler.handleSchemaSaveModeWithRestore();
+                }
+            } catch (Exception e) {
+                throw new SeaTunnelRuntimeException(HANDLE_SAVE_MODE_FAILED, e);
+            }
+        }
     public static void handleSchemaSaveMode(SeaTunnelSink<?, ?, ?, ?> sink) {
         if (SupportSaveMode.class.isAssignableFrom(sink.getClass())) {
             SupportSaveMode saveModeSink = (SupportSaveMode) sink;
