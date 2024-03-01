@@ -23,6 +23,8 @@ import org.apache.seatunnel.connectors.seatunnel.jdbc.internal.dialect.JdbcDiale
 import com.google.auto.service.AutoService;
 import lombok.NonNull;
 
+import javax.annotation.Nonnull;
+
 @AutoService(JdbcDialectFactory.class)
 public class PhoenixDialectFactory implements JdbcDialectFactory {
 
@@ -34,5 +36,10 @@ public class PhoenixDialectFactory implements JdbcDialectFactory {
     @Override
     public JdbcDialect create() {
         return new PhoenixDialect();
+    }
+
+    @Override
+    public JdbcDialect create(@Nonnull String compatibleMode, String fieldIde) {
+        return new PhoenixDialect(fieldIde);
     }
 }

@@ -86,7 +86,7 @@ public abstract class AbstractJdbcCatalog implements Catalog {
             JdbcUrlUtil.UrlInfo urlInfo,
             String defaultSchema) {
 
-        checkArgument(StringUtils.isNotBlank(username));
+        // checkArgument(StringUtils.isNotBlank(username));
         checkArgument(StringUtils.isNotBlank(urlInfo.getUrlWithoutDatabase()));
         this.catalogName = catalogName;
         this.defaultDatabase = urlInfo.getDefaultDatabase().orElse(null);
