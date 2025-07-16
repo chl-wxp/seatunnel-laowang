@@ -17,17 +17,21 @@
 
 package org.apache.seatunnel.connectors.seatunnel.mongodb.sink;
 
-import org.apache.seatunnel.shade.com.typesafe.config.Config;
-
-import org.apache.seatunnel.api.common.PrepareFailException;
+import org.apache.seatunnel.api.configuration.ReadonlyConfig;
 import org.apache.seatunnel.api.serialization.DefaultSerializer;
 import org.apache.seatunnel.api.serialization.Serializer;
+import org.apache.seatunnel.api.sink.DefaultSaveModeHandler;
+import org.apache.seatunnel.api.sink.SaveModeHandler;
 import org.apache.seatunnel.api.sink.SeaTunnelSink;
 import org.apache.seatunnel.api.sink.SinkAggregatedCommitter;
 import org.apache.seatunnel.api.sink.SinkWriter;
+import org.apache.seatunnel.api.sink.SupportMultiTableSink;
+import org.apache.seatunnel.api.sink.SupportSaveMode;
+import org.apache.seatunnel.api.table.catalog.CatalogTable;
 import org.apache.seatunnel.api.table.type.SeaTunnelRow;
-import org.apache.seatunnel.api.table.type.SeaTunnelRowType;
-import org.apache.seatunnel.connectors.seatunnel.mongodb.config.MongodbConfig;
+import org.apache.seatunnel.connectors.seatunnel.mongodb.catalog.MongoDBCatalog;
+import org.apache.seatunnel.connectors.seatunnel.mongodb.internal.MongodbClientProvider;
+import org.apache.seatunnel.connectors.seatunnel.mongodb.internal.MongodbCollectionProvider;
 import org.apache.seatunnel.connectors.seatunnel.mongodb.serde.RowDataDocumentSerializer;
 import org.apache.seatunnel.connectors.seatunnel.mongodb.serde.RowDataToBsonConverters;
 import org.apache.seatunnel.connectors.seatunnel.mongodb.sink.commit.MongodbSinkAggregatedCommitter;
@@ -35,73 +39,23 @@ import org.apache.seatunnel.connectors.seatunnel.mongodb.sink.state.DocumentBulk
 import org.apache.seatunnel.connectors.seatunnel.mongodb.sink.state.MongodbAggregatedCommitInfo;
 import org.apache.seatunnel.connectors.seatunnel.mongodb.sink.state.MongodbCommitInfo;
 
-import com.google.auto.service.AutoService;
-
-import java.util.List;
 import java.util.Optional;
 
 import static org.apache.seatunnel.connectors.seatunnel.mongodb.config.MongodbConfig.CONNECTOR_IDENTITY;
 
-@AutoService(SeaTunnelSink.class)
 public class MongodbSink
         implements SeaTunnelSink<
-                SeaTunnelRow, DocumentBulk, MongodbCommitInfo, MongodbAggregatedCommitInfo> {
+                        SeaTunnelRow, DocumentBulk, MongodbCommitInfo, MongodbAggregatedCommitInfo>,
+                SupportSaveMode,
+                SupportMultiTableSink {
 
     private MongodbWriterOptions options;
 
-    private SeaTunnelRowType seaTunnelRowType;
+    private CatalogTable catalogTable;
 
-    @Override
-    public void prepare(Config pluginConfig) throws PrepareFailException {
-        if (pluginConfig.hasPath(MongodbConfig.URI.key())
-                && pluginConfig.hasPath(MongodbConfig.DATABASE.key())
-                && pluginConfig.hasPath(MongodbConfig.COLLECTION.key())) {
-            String connection = pluginConfig.getString(MongodbConfig.URI.key());
-            String database = pluginConfig.getString(MongodbConfig.DATABASE.key());
-            String collection = pluginConfig.getString(MongodbConfig.COLLECTION.key());
-            MongodbWriterOptions.Builder builder =
-                    MongodbWriterOptions.builder()
-                            .withConnectString(connection)
-                            .withDatabase(database)
-                            .withCollection(collection);
-            if (pluginConfig.hasPath(MongodbConfig.BUFFER_FLUSH_MAX_ROWS.key())) {
-                builder.withFlushSize(
-                        pluginConfig.getInt(MongodbConfig.BUFFER_FLUSH_MAX_ROWS.key()));
-            }
-            if (pluginConfig.hasPath(MongodbConfig.BUFFER_FLUSH_INTERVAL.key())) {
-                builder.withBatchIntervalMs(
-                        pluginConfig.getLong(MongodbConfig.BUFFER_FLUSH_INTERVAL.key()));
-            }
-            if (pluginConfig.hasPath(MongodbConfig.PRIMARY_KEY.key())) {
-                builder.withPrimaryKey(
-                        pluginConfig
-                                .getStringList(MongodbConfig.PRIMARY_KEY.key())
-                                .toArray(new String[0]));
-            }
-            List<String> fallbackKeys = MongodbConfig.PRIMARY_KEY.getFallbackKeys();
-            fallbackKeys.forEach(
-                    key -> {
-                        if (pluginConfig.hasPath(key)) {
-                            builder.withPrimaryKey(
-                                    pluginConfig.getStringList(key).toArray(new String[0]));
-                        }
-                    });
-            if (pluginConfig.hasPath(MongodbConfig.UPSERT_ENABLE.key())) {
-                builder.withUpsertEnable(
-                        pluginConfig.getBoolean(MongodbConfig.UPSERT_ENABLE.key()));
-            }
-            if (pluginConfig.hasPath(MongodbConfig.RETRY_MAX.key())) {
-                builder.withRetryMax(pluginConfig.getInt(MongodbConfig.RETRY_MAX.key()));
-            }
-            if (pluginConfig.hasPath(MongodbConfig.RETRY_INTERVAL.key())) {
-                builder.withRetryInterval(pluginConfig.getLong(MongodbConfig.RETRY_INTERVAL.key()));
-            }
-
-            if (pluginConfig.hasPath(MongodbConfig.TRANSACTION.key())) {
-                builder.withTransaction(pluginConfig.getBoolean(MongodbConfig.TRANSACTION.key()));
-            }
-            this.options = builder.build();
-        }
+    public MongodbSink(CatalogTable catalogTable, ReadonlyConfig options) {
+        this.options = MongodbWriterOptions.from(options);
+        this.catalogTable = catalogTable;
     }
 
     @Override
@@ -110,16 +64,21 @@ public class MongodbSink
     }
 
     @Override
-    public void setTypeInfo(SeaTunnelRowType seaTunnelRowType) {
-        this.seaTunnelRowType = seaTunnelRowType;
-    }
-
-    @Override
     public SinkWriter<SeaTunnelRow, MongodbCommitInfo, DocumentBulk> createWriter(
             SinkWriter.Context context) {
+        String[] primaryKeyInCatalogTable =
+                catalogTable.getTableSchema().getPrimaryKey() == null
+                        ? null
+                        : catalogTable
+                                .getTableSchema()
+                                .getPrimaryKey()
+                                .getColumnNames()
+                                .toArray(new String[0]);
         return new MongodbWriter(
+                this.catalogTable,
                 new RowDataDocumentSerializer(
-                        RowDataToBsonConverters.createConverter(seaTunnelRowType),
+                        RowDataToBsonConverters.createConverter(
+                                this.catalogTable.getTableSchema().toPhysicalRowDataType()),
                         options,
                         new MongoKeyExtractor(options)),
                 options,
@@ -147,5 +106,26 @@ public class MongodbSink
     @Override
     public Optional<Serializer<MongodbCommitInfo>> getCommitInfoSerializer() {
         return options.transaction ? Optional.of(new DefaultSerializer<>()) : Optional.empty();
+    }
+
+    @Override
+    public Optional<SaveModeHandler> getSaveModeHandler() {
+
+        MongodbClientProvider clientProvider =
+                MongodbCollectionProvider.builder()
+                        .connectionString(options.getConnectString())
+                        .database(catalogTable.getTableId().getDatabaseName())
+                        .collection(catalogTable.getTableId().getTableName())
+                        .build();
+
+        MongoDBCatalog catalog = new MongoDBCatalog(clientProvider);
+
+        return Optional.of(
+                new DefaultSaveModeHandler(
+                        options.getSchemaSaveMode(),
+                        options.getDataSaveMode(),
+                        catalog,
+                        catalogTable,
+                        null));
     }
 }
