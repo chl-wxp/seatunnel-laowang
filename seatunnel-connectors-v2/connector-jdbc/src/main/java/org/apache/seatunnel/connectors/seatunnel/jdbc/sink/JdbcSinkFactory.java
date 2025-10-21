@@ -75,65 +75,24 @@ public class JdbcSinkFactory implements TableSinkFactory {
         ReadonlyConfig catalogOptions = getCatalogOptions(context);
         Optional<String> optionalTable = config.getOptional(JdbcSinkOptions.TABLE);
         Optional<String> optionalDatabase = config.getOptional(JdbcSinkOptions.DATABASE);
-        if (!optionalTable.isPresent()) {
-            optionalTable = Optional.of(SinkReplaceNameConstant.REPLACE_TABLE_NAME_KEY);
-        }
         // get source table relevant information
         TableIdentifier tableId = catalogTable.getTableId();
         String sourceDatabaseName = tableId.getDatabaseName();
         String sourceSchemaName = tableId.getSchemaName();
-        String pluginInputIdentifier = tableId.getTableName();
-        // get sink table relevant information
-        String sinkDatabaseName =
-                optionalDatabase.orElse(SinkReplaceNameConstant.REPLACE_DATABASE_NAME_KEY);
-        String sinkTableNameBefore = optionalTable.get();
-        String[] sinkTableSplitArray = sinkTableNameBefore.split("\\.");
-        String sinkTableName = sinkTableSplitArray[sinkTableSplitArray.length - 1];
-        String sinkSchemaName;
-        if (sinkTableSplitArray.length > 1) {
-            sinkSchemaName = sinkTableSplitArray[sinkTableSplitArray.length - 2];
-        } else {
-            sinkSchemaName = null;
-        }
-        if (StringUtils.isNotBlank(catalogOptions.get(JdbcSinkOptions.SCHEMA))) {
-            sinkSchemaName = catalogOptions.get(JdbcSinkOptions.SCHEMA);
-        }
+        String sourceTableName = tableId.getTableName();
         // to add tablePrefix and tableSuffix
-        String tempTableName;
         String prefix = catalogOptions.get(JdbcSinkOptions.TABLE_PREFIX);
         String suffix = catalogOptions.get(JdbcSinkOptions.TABLE_SUFFIX);
-        if (StringUtils.isNotEmpty(prefix) || StringUtils.isNotEmpty(suffix)) {
-            tempTableName = StringUtils.isNotEmpty(prefix) ? prefix + sinkTableName : sinkTableName;
-            tempTableName = StringUtils.isNotEmpty(suffix) ? tempTableName + suffix : tempTableName;
+        String finalDatabaseName = optionalDatabase.orElse("default");
+        String finalTableName;
+        if (optionalTable.isPresent()) {
+            if (StringUtils.isNotEmpty(prefix)) {
 
-        } else {
-            tempTableName = sinkTableName;
-        }
-        // to replace
-        String finalDatabaseName = sinkDatabaseName;
-        if (StringUtils.isNotEmpty(sourceDatabaseName)) {
-            finalDatabaseName =
-                    sinkDatabaseName.replace(
-                            SinkReplaceNameConstant.REPLACE_DATABASE_NAME_KEY, sourceDatabaseName);
-        }
 
-        String finalSchemaName;
-        if (sinkSchemaName != null) {
-            if (sourceSchemaName == null) {
-                finalSchemaName = sinkSchemaName;
-            } else {
-                finalSchemaName =
-                        sinkSchemaName.replace(
-                                SinkReplaceNameConstant.REPLACE_SCHEMA_NAME_KEY, sourceSchemaName);
             }
-        } else {
-            finalSchemaName = null;
-        }
-        String finalTableName = sinkTableName;
-        if (StringUtils.isNotEmpty(pluginInputIdentifier)) {
-            finalTableName =
-                    tempTableName.replace(
-                            SinkReplaceNameConstant.REPLACE_TABLE_NAME_KEY, pluginInputIdentifier);
+            if (StringUtils.isNotEmpty(suffix)){
+
+            }
         }
 
         // rebuild TableIdentifier and catalogTable
