@@ -17,6 +17,8 @@
 
 package org.apache.seatunnel.connectors.seatunnel.mongodb.source.split;
 
+import org.apache.seatunnel.api.table.catalog.TablePath;
+
 import org.bson.BsonDocument;
 
 import javax.annotation.Nullable;
@@ -36,8 +38,10 @@ public class MongoSplitUtils {
             BsonDocument projection,
             String splitKey,
             @Nullable Object lowerBound,
-            @Nullable Object upperBound) {
-        return createMongoSplit(index, matchQuery, projection, splitKey, lowerBound, upperBound, 0);
+            @Nullable Object upperBound,
+            TablePath tablePath) {
+        return createMongoSplit(
+                index, matchQuery, projection, splitKey, lowerBound, upperBound, 0, tablePath);
     }
 
     public static MongoSplit createMongoSplit(
@@ -47,7 +51,8 @@ public class MongoSplitUtils {
             String splitKey,
             @Nullable Object lowerBound,
             @Nullable Object upperBound,
-            long startOffset) {
+            long startOffset,
+            TablePath tablePath) {
         BsonDocument splitQuery = new BsonDocument();
         if (matchQuery != null) {
             matchQuery.forEach(splitQuery::append);
@@ -67,6 +72,10 @@ public class MongoSplitUtils {
             boundaryQuery.forEach(splitQuery::append);
         }
         return new MongoSplit(
-                String.format(SPLIT_ID_TEMPLATE, index), splitQuery, projection, startOffset);
+                tablePath,
+                String.format(SPLIT_ID_TEMPLATE, index),
+                splitQuery,
+                projection,
+                startOffset);
     }
 }

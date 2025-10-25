@@ -58,6 +58,12 @@ public class MongodbConfig {
                     .noDefaultValue()
                     .withDescription("The name of MongoDB collection to read or write.");
 
+    public static final Option<List<MongodbSourceCollectionConfig>> COLLECTION_LIST =
+            Options.key("collection_list")
+                    .listType(MongodbSourceCollectionConfig.class)
+                    .noDefaultValue()
+                    .withDescription("collection list config");
+
     public static final Option<String> MATCH_QUERY =
             Options.key("match.query")
                     .stringType()

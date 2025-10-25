@@ -20,13 +20,15 @@ package org.apache.seatunnel.connectors.seatunnel.mongodb.source.enumerator;
 import org.apache.seatunnel.shade.com.google.common.collect.Lists;
 
 import org.apache.seatunnel.api.source.SourceSplitEnumerator;
+import org.apache.seatunnel.api.table.catalog.TablePath;
 import org.apache.seatunnel.common.exception.CommonErrorCodeDeprecated;
 import org.apache.seatunnel.connectors.seatunnel.mongodb.exception.MongodbConnectorException;
 import org.apache.seatunnel.connectors.seatunnel.mongodb.internal.MongodbClientProvider;
 import org.apache.seatunnel.connectors.seatunnel.mongodb.source.split.MongoSplit;
 import org.apache.seatunnel.connectors.seatunnel.mongodb.source.split.MongoSplitStrategy;
 
-import com.mongodb.MongoNamespace;
+import org.apache.commons.collections4.MapUtils;
+
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
@@ -46,24 +48,24 @@ public class MongodbSplitEnumerator
 
     private final Context<MongoSplit> context;
 
-    private final MongodbClientProvider clientProvider;
+    private final Map<TablePath, MongodbClientProvider> clientProviderMap;
     private final Object stateLock = new Object();
     private final MongoSplitStrategy strategy;
 
     public MongodbSplitEnumerator(
             Context<MongoSplit> context,
-            MongodbClientProvider clientProvider,
+            Map<TablePath, MongodbClientProvider> clientProviderMap,
             MongoSplitStrategy strategy) {
-        this(context, clientProvider, strategy, Collections.emptyList());
+        this(context, clientProviderMap, strategy, Collections.emptyList());
     }
 
     public MongodbSplitEnumerator(
             Context<MongoSplit> context,
-            MongodbClientProvider clientProvider,
+            Map<TablePath, MongodbClientProvider> clientProviderMap,
             MongoSplitStrategy strategy,
             List<MongoSplit> splits) {
         this.context = context;
-        this.clientProvider = clientProvider;
+        this.clientProviderMap = clientProviderMap;
         this.strategy = strategy;
         this.pendingSplits.addAll(splits);
     }
@@ -76,11 +78,7 @@ public class MongodbSplitEnumerator
         log.info("Starting MongoSplitEnumerator.");
         synchronized (stateLock) {
             pendingSplits.addAll(strategy.split());
-            MongoNamespace namespace = clientProvider.getDefaultCollection().getNamespace();
-            log.info(
-                    "Added {} pending splits for namespace {}.",
-                    pendingSplits.size(),
-                    namespace.getFullName());
+            log.info("Added {} pending splits.", pendingSplits.size());
         }
         synchronized (stateLock) {
             Set<Integer> readers = context.registeredReaders();
@@ -90,8 +88,8 @@ public class MongodbSplitEnumerator
 
     @Override
     public void close() {
-        if (clientProvider != null) {
-            clientProvider.close();
+        if (MapUtils.isNotEmpty(clientProviderMap)) {
+            clientProviderMap.values().forEach(MongodbClientProvider::close);
         }
     }
 

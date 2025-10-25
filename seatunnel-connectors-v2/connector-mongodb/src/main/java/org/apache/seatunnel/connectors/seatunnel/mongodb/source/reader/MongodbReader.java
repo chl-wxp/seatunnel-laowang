@@ -21,11 +21,14 @@ import org.apache.seatunnel.shade.com.google.common.base.Preconditions;
 
 import org.apache.seatunnel.api.source.Collector;
 import org.apache.seatunnel.api.source.SourceReader;
+import org.apache.seatunnel.api.table.catalog.TablePath;
 import org.apache.seatunnel.api.table.type.SeaTunnelRow;
 import org.apache.seatunnel.connectors.seatunnel.mongodb.internal.MongodbClientProvider;
 import org.apache.seatunnel.connectors.seatunnel.mongodb.serde.DocumentDeserializer;
 import org.apache.seatunnel.connectors.seatunnel.mongodb.source.config.MongodbReadOptions;
 import org.apache.seatunnel.connectors.seatunnel.mongodb.source.split.MongoSplit;
+
+import org.apache.commons.collections4.MapUtils;
 
 import org.bson.BsonDocument;
 
@@ -34,6 +37,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.TimeUnit;
@@ -46,11 +50,11 @@ public class MongodbReader implements SourceReader<SeaTunnelRow, MongoSplit> {
 
     private final Queue<MongoSplit> pendingSplits;
 
-    private final DocumentDeserializer<SeaTunnelRow> deserializer;
+    private final Map<TablePath, DocumentDeserializer<SeaTunnelRow>> deserializers;
 
     private final SourceReader.Context context;
 
-    private final MongodbClientProvider clientProvider;
+    private final Map<TablePath, MongodbClientProvider> clientProviderMap;
 
     private MongoCursor<BsonDocument> cursor;
 
@@ -60,12 +64,12 @@ public class MongodbReader implements SourceReader<SeaTunnelRow, MongoSplit> {
 
     public MongodbReader(
             SourceReader.Context context,
-            MongodbClientProvider clientProvider,
-            DocumentDeserializer<SeaTunnelRow> deserializer,
+            Map<TablePath, MongodbClientProvider> clientProviderMap,
+            Map<TablePath, DocumentDeserializer<SeaTunnelRow>> deserializers,
             MongodbReadOptions mongodbReadOptions) {
-        this.deserializer = deserializer;
+        this.deserializers = deserializers;
         this.context = context;
-        this.clientProvider = clientProvider;
+        this.clientProviderMap = clientProviderMap;
         pendingSplits = new ConcurrentLinkedDeque<>();
         this.readOptions = mongodbReadOptions;
     }
@@ -82,8 +86,8 @@ public class MongodbReader implements SourceReader<SeaTunnelRow, MongoSplit> {
         if (cursor != null) {
             cursor.close();
         }
-        if (clientProvider != null) {
-            clientProvider.close();
+        if (MapUtils.isNotEmpty(clientProviderMap)) {
+            clientProviderMap.values().forEach(MongodbClientProvider::close);
         }
     }
 
@@ -92,6 +96,7 @@ public class MongodbReader implements SourceReader<SeaTunnelRow, MongoSplit> {
         synchronized (output.getCheckpointLock()) {
             MongoSplit currentSplit = pendingSplits.poll();
             if (currentSplit != null) {
+                final TablePath currentSplitTablePath = currentSplit.getTablePath();
                 if (cursor != null) {
                     // current split is in-progress
                     return;
@@ -99,7 +104,9 @@ public class MongodbReader implements SourceReader<SeaTunnelRow, MongoSplit> {
                 log.info("Prepared to read split {}", currentSplit.splitId());
                 try {
                     getCursor(currentSplit);
-                    cursorToStream().map(deserializer::deserialize).forEach(output::collect);
+                    cursorToStream()
+                            .map(deserializers.get(currentSplitTablePath)::deserialize)
+                            .forEach(output::collect);
                 } finally {
                     closeCurrentSplit();
                 }
@@ -114,7 +121,8 @@ public class MongodbReader implements SourceReader<SeaTunnelRow, MongoSplit> {
 
     private void getCursor(MongoSplit split) {
         cursor =
-                clientProvider
+                clientProviderMap
+                        .get(split.getTablePath())
                         .getDefaultCollection()
                         .find(split.getQuery())
                         .projection(split.getProjection())

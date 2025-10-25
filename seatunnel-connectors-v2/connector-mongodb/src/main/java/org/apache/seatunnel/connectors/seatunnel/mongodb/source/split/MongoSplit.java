@@ -18,6 +18,7 @@
 package org.apache.seatunnel.connectors.seatunnel.mongodb.source.split;
 
 import org.apache.seatunnel.api.source.SourceSplit;
+import org.apache.seatunnel.api.table.catalog.TablePath;
 
 import org.bson.BsonDocument;
 
@@ -30,6 +31,9 @@ import lombok.Getter;
 public class MongoSplit implements SourceSplit {
 
     private static final long serialVersionUID = 6349181541535290370L;
+
+    private final TablePath tablePath;
+
     private final String splitId;
 
     private final BsonDocument query;

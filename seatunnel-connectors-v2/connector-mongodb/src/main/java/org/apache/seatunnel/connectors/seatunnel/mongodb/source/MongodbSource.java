@@ -23,12 +23,15 @@ import org.apache.seatunnel.api.source.SeaTunnelSource;
 import org.apache.seatunnel.api.source.SourceReader;
 import org.apache.seatunnel.api.source.SourceSplitEnumerator;
 import org.apache.seatunnel.api.source.SupportColumnProjection;
+import org.apache.seatunnel.api.source.SupportParallelism;
 import org.apache.seatunnel.api.table.catalog.CatalogTable;
+import org.apache.seatunnel.api.table.catalog.TablePath;
 import org.apache.seatunnel.api.table.type.SeaTunnelRow;
 import org.apache.seatunnel.api.table.type.SeaTunnelRowType;
 import org.apache.seatunnel.connectors.seatunnel.mongodb.config.MongodbConfig;
 import org.apache.seatunnel.connectors.seatunnel.mongodb.internal.MongodbClientProvider;
 import org.apache.seatunnel.connectors.seatunnel.mongodb.internal.MongodbCollectionProvider;
+import org.apache.seatunnel.connectors.seatunnel.mongodb.serde.DocumentDeserializer;
 import org.apache.seatunnel.connectors.seatunnel.mongodb.serde.DocumentRowDataDeserializer;
 import org.apache.seatunnel.connectors.seatunnel.mongodb.source.config.MongodbReadOptions;
 import org.apache.seatunnel.connectors.seatunnel.mongodb.source.enumerator.MongodbSplitEnumerator;
@@ -40,22 +43,25 @@ import org.apache.seatunnel.connectors.seatunnel.mongodb.source.split.SamplingSp
 import org.bson.BsonDocument;
 
 import java.util.ArrayList;
-import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.apache.seatunnel.connectors.seatunnel.mongodb.config.MongodbConfig.CONNECTOR_IDENTITY;
 
 public class MongodbSource
         implements SeaTunnelSource<SeaTunnelRow, MongoSplit, ArrayList<MongoSplit>>,
+                SupportParallelism,
                 SupportColumnProjection {
 
     private static final long serialVersionUID = 1L;
 
-    private final CatalogTable catalogTable;
+    private final Map<TablePath, CatalogTable> catalogTables;
     private final ReadonlyConfig options;
 
-    public MongodbSource(CatalogTable catalogTable, ReadonlyConfig options) {
-        this.catalogTable = catalogTable;
+    public MongodbSource(Map<TablePath, CatalogTable> catalogTables, ReadonlyConfig options) {
+        this.catalogTables = catalogTables;
         this.options = options;
     }
 
@@ -71,22 +77,34 @@ public class MongodbSource
 
     @Override
     public List<CatalogTable> getProducedCatalogTables() {
-        return Collections.singletonList(catalogTable);
+        return new ArrayList<>(catalogTables.values());
     }
 
     @Override
     public SourceReader<SeaTunnelRow, MongoSplit> createReader(SourceReader.Context readerContext) {
+        Map<TablePath, DocumentDeserializer<SeaTunnelRow>> documentDeserializerMap =
+                new LinkedHashMap<>();
+        catalogTables
+                .keySet()
+                .forEach(
+                        tablePath -> {
+                            documentDeserializerMap.put(
+                                    tablePath,
+                                    createDeserializer(
+                                            options,
+                                            catalogTables.get(tablePath).getSeaTunnelRowType()));
+                        });
         return new MongodbReader(
                 readerContext,
                 crateClientProvider(options),
-                createDeserializer(options, catalogTable.getSeaTunnelRowType()),
+                documentDeserializerMap,
                 createMongodbReadOptions(options));
     }
 
     @Override
     public SourceSplitEnumerator<MongoSplit, ArrayList<MongoSplit>> createEnumerator(
             SourceSplitEnumerator.Context<MongoSplit> enumeratorContext) {
-        MongodbClientProvider clientProvider = crateClientProvider(options);
+        Map<TablePath, MongodbClientProvider> clientProvider = crateClientProvider(options);
         return new MongodbSplitEnumerator(
                 enumeratorContext, clientProvider, createSplitStrategy(options, clientProvider));
     }
@@ -95,20 +113,29 @@ public class MongodbSource
     public SourceSplitEnumerator<MongoSplit, ArrayList<MongoSplit>> restoreEnumerator(
             SourceSplitEnumerator.Context<MongoSplit> enumeratorContext,
             ArrayList<MongoSplit> checkpointState) {
-        MongodbClientProvider clientProvider = crateClientProvider(options);
+        Map<TablePath, MongodbClientProvider> clientProviderMap = crateClientProvider(options);
         return new MongodbSplitEnumerator(
                 enumeratorContext,
-                clientProvider,
-                createSplitStrategy(options, clientProvider),
+                clientProviderMap,
+                createSplitStrategy(options, clientProviderMap),
                 checkpointState);
     }
 
-    private MongodbClientProvider crateClientProvider(ReadonlyConfig config) {
-        return MongodbCollectionProvider.builder()
-                .connectionString(config.get(MongodbConfig.URI))
-                .database(config.get(MongodbConfig.DATABASE))
-                .collection(config.get(MongodbConfig.COLLECTION))
-                .build();
+    private Map<TablePath, MongodbClientProvider> crateClientProvider(ReadonlyConfig config) {
+        Map<TablePath, MongodbClientProvider> mongodbClientProviderMap = new HashMap<>();
+        catalogTables
+                .keySet()
+                .forEach(
+                        tablePath -> {
+                            final MongodbClientProvider mongodbClientProvider =
+                                    MongodbCollectionProvider.builder()
+                                            .connectionString(config.get(MongodbConfig.URI))
+                                            .database(tablePath.getDatabaseName())
+                                            .collection(tablePath.getTableName())
+                                            .build();
+                            mongodbClientProviderMap.put(tablePath, mongodbClientProvider);
+                        });
+        return mongodbClientProviderMap;
     }
 
     private DocumentRowDataDeserializer createDeserializer(
@@ -118,7 +145,7 @@ public class MongodbSource
     }
 
     private MongoSplitStrategy createSplitStrategy(
-            ReadonlyConfig config, MongodbClientProvider clientProvider) {
+            ReadonlyConfig config, Map<TablePath, MongodbClientProvider> mongodbClientProviderMap) {
         SamplingSplitStrategy.Builder splitStrategyBuilder = SamplingSplitStrategy.builder();
         splitStrategyBuilder.setSplitKey(config.get(MongodbConfig.SPLIT_KEY));
         splitStrategyBuilder.setSizePerSplit(config.get(MongodbConfig.SPLIT_SIZE));
@@ -126,7 +153,7 @@ public class MongodbSource
                 .ifPresent(s -> splitStrategyBuilder.setMatchQuery(BsonDocument.parse(s)));
         config.getOptional(MongodbConfig.PROJECTION)
                 .ifPresent(s -> splitStrategyBuilder.setProjection(BsonDocument.parse(s)));
-        return splitStrategyBuilder.setClientProvider(clientProvider).build();
+        return splitStrategyBuilder.setClientProvider(mongodbClientProviderMap).build();
     }
 
     private MongodbReadOptions createMongodbReadOptions(ReadonlyConfig config) {
