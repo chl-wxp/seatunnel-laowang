@@ -55,12 +55,11 @@ public class MongodbSourceFactory implements TableSourceFactory {
     @Override
     public OptionRule optionRule() {
         return OptionRule.builder()
-                .required(
-                        MongodbConfig.URI,
+                .required(MongodbConfig.URI)
+                .optional(
                         MongodbConfig.DATABASE,
                         MongodbConfig.COLLECTION,
-                        ConnectorCommonOptions.SCHEMA)
-                .optional(
+                        ConnectorCommonOptions.SCHEMA,
                         MongodbConfig.PROJECTION,
                         MongodbConfig.MATCH_QUERY,
                         MongodbConfig.SPLIT_SIZE,

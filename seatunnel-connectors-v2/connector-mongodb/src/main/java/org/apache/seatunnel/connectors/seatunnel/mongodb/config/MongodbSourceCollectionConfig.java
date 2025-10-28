@@ -11,7 +11,6 @@ import java.util.List;
 import java.util.Map;
 
 @Data
-@Builder
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class MongodbSourceCollectionConfig {
 
@@ -22,5 +21,5 @@ public class MongodbSourceCollectionConfig {
     private String collection;
 
     @JsonProperty("schema")
-    private TypeReference<List<Map<String, Object>>> schema;
+    private Map<String, Object> schema;
 }
