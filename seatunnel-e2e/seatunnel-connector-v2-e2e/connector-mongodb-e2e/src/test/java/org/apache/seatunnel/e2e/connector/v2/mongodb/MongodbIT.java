@@ -267,23 +267,37 @@ public class MongodbIT extends AbstractMongodbIT {
     }
 
     @TestTemplate
+    @DisabledOnContainer(
+            value = {},
+            type = {EngineType.FLINK, EngineType.SPARK},
+            disabledReason = "Currently SPARK and FLINK do not support mongodb null value write")
     public void testFakeSourceToMongodbMultipleTable(TestContainer container)
             throws IOException, InterruptedException {
+        String collectionOneStr = "multiple_test_table1";
+        String collectionTwoStr = "multiple_test_table2";
+        // add test data for collection_one
+        beforeInsertData(collectionOneStr, DataSaveMode.APPEND_DATA);
+        beforeInsertData(collectionTwoStr, DataSaveMode.APPEND_DATA);
+        // execute job
         Container.ExecResult insertResult =
-                container.executeJob("/fake_source_to_mongodb_multiple_table.conf");
+                container.executeJob("/mongodb_multiple_table_test.conf");
         Assertions.assertEquals(0, insertResult.getExitCode(), insertResult.getStderr());
-        String collectionOneStr = "testDatabase1_testSchema1_testTable1_check";
-        MongoCollection<BsonDocument> collectionOne =
+        String collectionOneStrAfter = "test_db_multiple_test_table1_check";
+        // assert
+        MongoCollection<BsonDocument> collectionOneAfter =
                 client.getDatabase(MONGODB_DATABASE)
-                        .getCollection(collectionOneStr, BsonDocument.class);
-        Assertions.assertEquals(1, collectionOne.countDocuments());
-        String collectionTwoStr = "testDatabase2_testSchema2_testTable2_check";
-        MongoCollection<BsonDocument> collectionTwo =
+                        .getCollection(collectionOneStrAfter, BsonDocument.class);
+        String collectionTwoStrAfter = "test_db_multiple_test_table2_check";
+        MongoCollection<BsonDocument> collectionTwoAfter =
                 client.getDatabase(MONGODB_DATABASE)
-                        .getCollection(collectionTwoStr, BsonDocument.class);
-        Assertions.assertEquals(1, collectionTwo.countDocuments());
+                        .getCollection(collectionTwoStrAfter, BsonDocument.class);
+        Assertions.assertEquals(1, collectionOneAfter.countDocuments());
+        Assertions.assertEquals(1, collectionTwoAfter.countDocuments());
+        // clear data
         clearData(collectionOneStr);
         clearData(collectionTwoStr);
+        clearData(collectionOneStrAfter);
+        clearData(collectionTwoStrAfter);
     }
 
     @SneakyThrows
@@ -295,7 +309,7 @@ public class MongodbIT extends AbstractMongodbIT {
                 client.getDatabase(MONGODB_DATABASE)
                         .getCollection(collectionName, BsonDocument.class);
         // insert one row
-        beforeInsertData(collectionName, DataSaveMode.DROP_DATA, collection);
+        beforeInsertData(collectionName, DataSaveMode.DROP_DATA);
         // build sink
         final MongodbSink mongoDbSink = getSinkInstance(collectionName, DataSaveMode.DROP_DATA);
         final SinkWriter<SeaTunnelRow, MongodbCommitInfo, DocumentBulk> writer =
@@ -324,7 +338,7 @@ public class MongodbIT extends AbstractMongodbIT {
                 client.getDatabase(MONGODB_DATABASE)
                         .getCollection(collectionName, BsonDocument.class);
         // insert one row
-        beforeInsertData(collectionName, DataSaveMode.APPEND_DATA, collection);
+        beforeInsertData(collectionName, DataSaveMode.APPEND_DATA);
         // build sink
         final MongodbSink mongoDbSink = getSinkInstance(collectionName, DataSaveMode.APPEND_DATA);
         final SinkWriter<SeaTunnelRow, MongodbCommitInfo, DocumentBulk> writer =
@@ -353,7 +367,7 @@ public class MongodbIT extends AbstractMongodbIT {
                 client.getDatabase(MONGODB_DATABASE)
                         .getCollection(collectionName, BsonDocument.class);
         // insert one row
-        beforeInsertData(collectionName, DataSaveMode.ERROR_WHEN_DATA_EXISTS, collection);
+        beforeInsertData(collectionName, DataSaveMode.ERROR_WHEN_DATA_EXISTS);
         // build sink
         final MongodbSink mongoDbSink =
                 getSinkInstance(collectionName, DataSaveMode.ERROR_WHEN_DATA_EXISTS);
@@ -375,16 +389,17 @@ public class MongodbIT extends AbstractMongodbIT {
         collection.drop();
     }
 
-    private void beforeInsertData(
-            String collection,
-            DataSaveMode dataSaveMode,
-            MongoCollection<BsonDocument> dropDataCollection) {
+    private void beforeInsertData(String collectionStr, DataSaveMode dataSaveMode) {
+        MongoCollection<BsonDocument> collection =
+                client.getDatabase(MONGODB_DATABASE)
+                        .getCollection(collectionStr, BsonDocument.class);
         final RowDataDocumentSerializer rowDataDocumentSerializer =
                 new RowDataDocumentSerializer(
                         RowDataToBsonConverters.createConverter(
-                                getCatalogTable(collection).getSeaTunnelRowType()),
-                        getMongodbWriterOptions(collection, dataSaveMode),
-                        new MongoKeyExtractor(getMongodbWriterOptions(collection, dataSaveMode)));
+                                getCatalogTable(collectionStr).getSeaTunnelRowType()),
+                        getMongodbWriterOptions(collectionStr, dataSaveMode),
+                        new MongoKeyExtractor(
+                                getMongodbWriterOptions(collectionStr, dataSaveMode)));
         WriteModel<BsonDocument> bsonDocumentWriteModelOne =
                 rowDataDocumentSerializer.serializeToWriteModel(getSeaTunnelRowOne());
         WriteModel<BsonDocument> bsonDocumentWriteModelTwo =
@@ -392,7 +407,7 @@ public class MongodbIT extends AbstractMongodbIT {
         List<WriteModel<BsonDocument>> writeModelList = new ArrayList<>();
         writeModelList.add(bsonDocumentWriteModelOne);
         writeModelList.add(bsonDocumentWriteModelTwo);
-        dropDataCollection.bulkWrite(writeModelList);
+        collection.bulkWrite(writeModelList);
     }
 
     private SeaTunnelRow getSeaTunnelRowOne() {
