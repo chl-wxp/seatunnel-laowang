@@ -202,13 +202,16 @@ public class PrometheusWriter extends HttpSinkWriter {
 
     @Override
     public void close() throws IOException {
-        super.close();
-        if (scheduledFuture != null) {
-            scheduledFuture.cancel(false);
-            if (executor != null) {
-                executor.shutdownNow();
+        try {
+            this.flush();
+        } finally {
+            super.close();
+            if (scheduledFuture != null) {
+                scheduledFuture.cancel(false);
+                if (executor != null) {
+                    executor.shutdownNow();
+                }
             }
         }
-        this.flush();
     }
 }

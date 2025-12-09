@@ -142,9 +142,34 @@ public class Neo4jSinkWriter implements SinkWriter<SeaTunnelRow, Void, Void> {
 
     @Override
     public void close() throws IOException {
-        flushWriteBuffer();
-        session.close();
-        driver.close();
+        Exception root = null;
+        try {
+            flushWriteBuffer();
+        } catch (Exception e) {
+            root = e;
+        } finally {
+            try {
+                session.close();
+            } catch (Exception e) {
+                if (root == null) {
+                    root = e;
+                } else {
+                    root.addSuppressed(e);
+                }
+            }
+            try {
+                driver.close();
+            } catch (Exception e) {
+                if (root == null) {
+                    root = e;
+                } else {
+                    root.addSuppressed(e);
+                }
+            }
+        }
+        if (root != null) {
+            throw new IOException("Failed to close Milvus client", root);
+        }
     }
 
     private void flushWriteBuffer() {

@@ -95,15 +95,20 @@ public class MilvusSinkWriter
      */
     @Override
     public void close() throws IOException {
+        log.info("Stopping Milvus Client");
         try {
-            log.info("Stopping Milvus Client");
             batchWriter.flush();
-            batchWriter.close();
-            log.info("Stop Milvus Client success");
         } catch (Exception e) {
-            log.error("Stop Milvus Client failed", e);
-            throw new MilvusConnectorException(MilvusConnectionErrorCode.CLOSE_CLIENT_ERROR, e);
+            log.error("Flush failed during close", e);
+        } finally {
+            try {
+                batchWriter.close();
+            } catch (Exception e) {
+                log.error("Close failed", e);
+                throw new MilvusConnectorException(MilvusConnectionErrorCode.CLOSE_CLIENT_ERROR, e);
+            }
         }
+        log.info("Stop Milvus Client success");
     }
 
     private void flush() {

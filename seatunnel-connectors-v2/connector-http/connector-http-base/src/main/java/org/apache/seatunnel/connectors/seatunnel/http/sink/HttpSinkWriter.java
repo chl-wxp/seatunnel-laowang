@@ -153,11 +153,14 @@ public class HttpSinkWriter extends AbstractSinkWriter<SeaTunnelRow, Void>
 
     @Override
     public void close() throws IOException {
-        if (arrayMode) {
-            flush();
-        }
-        if (Objects.nonNull(httpClient)) {
-            httpClient.close();
+        try {
+            if (arrayMode) {
+                flush();
+            }
+        } finally {
+            if (Objects.nonNull(httpClient)) {
+                httpClient.close();
+            }
         }
     }
 

@@ -147,9 +147,12 @@ public class DruidWriter extends AbstractSinkWriter<SeaTunnelRow, Void>
 
     @Override
     public void close() throws IOException {
-        flush();
-        if (httpClient != null) {
-            httpClient.close();
+        try {
+            flush();
+        } finally {
+            if (httpClient != null) {
+                httpClient.close();
+            }
         }
     }
 

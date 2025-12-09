@@ -54,7 +54,10 @@ public class QdrantSinkWriter extends AbstractSinkWriter<SeaTunnelRow, Void>
 
     @Override
     public void close() throws IOException {
-        batchWriter.flush();
-        batchWriter.close();
+        try {
+            batchWriter.flush();
+        } finally {
+            batchWriter.close();
+        }
     }
 }

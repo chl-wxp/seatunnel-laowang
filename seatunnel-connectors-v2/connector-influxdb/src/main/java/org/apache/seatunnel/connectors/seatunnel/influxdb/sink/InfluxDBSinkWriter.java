@@ -85,11 +85,13 @@ public class InfluxDBSinkWriter extends AbstractSinkWriter<SeaTunnelRow, Void>
 
     @Override
     public void close() throws IOException {
-        flush();
-
-        if (influxdb != null) {
-            influxdb.close();
-            influxdb = null;
+        try {
+            flush();
+        } finally {
+            if (influxdb != null) {
+                influxdb.close();
+                influxdb = null;
+            }
         }
     }
 

@@ -292,9 +292,13 @@ public class RedisSinkWriter extends AbstractSinkWriter<SeaTunnelRow, Void>
     }
 
     private synchronized void flush() {
-        if (!keyBuffer.isEmpty()) {
-            doBatchWrite();
-            clearBuffer();
+        try {
+            if (!keyBuffer.isEmpty()) {
+                doBatchWrite();
+                clearBuffer();
+            }
+        } finally {
+            redisClient.close();
         }
     }
 }

@@ -255,14 +255,17 @@ public class DorisSinkWriter
 
     @Override
     public void close() throws IOException {
-        if (!dorisSinkConfig.getEnable2PC()) {
-            flush();
-        }
-        if (scheduledExecutorService != null) {
-            scheduledExecutorService.shutdownNow();
-        }
-        if (dorisStreamLoad != null) {
-            dorisStreamLoad.close();
+        try {
+            if (!dorisSinkConfig.getEnable2PC()) {
+                flush();
+            }
+            if (scheduledExecutorService != null) {
+                scheduledExecutorService.shutdownNow();
+            }
+        } finally {
+            if (dorisStreamLoad != null) {
+                dorisStreamLoad.close();
+            }
         }
     }
 
