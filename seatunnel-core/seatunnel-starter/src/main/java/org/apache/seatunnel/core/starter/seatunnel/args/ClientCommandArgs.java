@@ -49,12 +49,19 @@ public class ClientCommandArgs extends AbstractCommandArgs {
     private MasterType masterType = MasterType.CLUSTER;
 
     @Parameter(
-            names = {"-r", "--restore"},
+            names = {"-port", "--hazelcast-port"},
+            description =
+                    "Set Hazelcast port for local mode. Port 0 means random assignment. Only valid in local mode.",
+            validateWith = PortValidator.class)
+    private Integer hazelcastPort = 0;
+
+    @Parameter(
+            names = {"-r", "--restore", "--restore-job"},
             description = "restore with savepoint by jobId")
     private String restoreJobId;
 
     @Parameter(
-            names = {"-s", "--savepoint"},
+            names = {"-s", "--savepoint", "--savepoint-job"},
             description = "savepoint job by jobId")
     private String savePointJobId;
 
@@ -69,10 +76,16 @@ public class ClientCommandArgs extends AbstractCommandArgs {
     private String jobId;
 
     @Parameter(
-            names = {"-can", "--cancel-job"},
+            names = {"-can", "--cancel", "--cancel-job"},
             variableArity = true,
-            description = "Cancel job by JobId")
+            description = "Cancel job(s) by JobId")
     private List<String> cancelJobId;
+
+    @Parameter(
+            names = {"-f", "--force-cancel", "--force-cancel-job"},
+            variableArity = true,
+            description = "Force Cancel job(s) by JobId")
+    private List<String> forceCancelJobId;
 
     @Parameter(
             names = {"--metrics"},
@@ -90,6 +103,31 @@ public class ClientCommandArgs extends AbstractCommandArgs {
     private boolean getRunningJobMetrics = false;
 
     @Parameter(
+            names = {"--checkpoint-overview"},
+            description = "Get checkpoint overview by JobId")
+    private String checkpointOverviewJobId;
+
+    @Parameter(
+            names = {"--checkpoint-history"},
+            description = "Get checkpoint history by JobId")
+    private String checkpointHistoryJobId;
+
+    @Parameter(
+            names = {"--checkpoint-history-pipeline"},
+            description = "Filter checkpoint history by pipeline id")
+    private Integer checkpointHistoryPipeline;
+
+    @Parameter(
+            names = {"--checkpoint-history-limit"},
+            description = "Limit checkpoint history size")
+    private Integer checkpointHistoryLimit = 20;
+
+    @Parameter(
+            names = {"--checkpoint-history-status"},
+            description = "Filter checkpoint history by status: COMPLETED,FAILED,CANCELED")
+    private String checkpointHistoryStatus;
+
+    @Parameter(
             names = {"-l", "--list"},
             description = "list job status")
     private boolean listJob = false;
@@ -101,7 +139,7 @@ public class ClientCommandArgs extends AbstractCommandArgs {
     private boolean async = false;
 
     @Parameter(
-            names = {"-cj", "--close-job"},
+            names = {"-cj", "--close", "--close-job"},
             description = "Close client the task will also be closed")
     private boolean closeJob = true;
 
@@ -154,6 +192,26 @@ public class ClientCommandArgs extends AbstractCommandArgs {
                         "\n******************************************************************************************"
                                 + "\n-e and --deploy-mode deprecated in 2.3.1, please use -m and --master instead of it"
                                 + "\n******************************************************************************************");
+            }
+        }
+    }
+
+    /** Validator for Hazelcast port parameter. */
+    public static class PortValidator implements IParameterValidator {
+        @Override
+        public void validate(String name, String value) throws ParameterException {
+            try {
+                int port = Integer.parseInt(value);
+                if (port < 0 || port > 65535) {
+                    throw new ParameterException(
+                            "Parameter "
+                                    + name
+                                    + " should be between 0 and 65535, found: "
+                                    + value);
+                }
+            } catch (NumberFormatException e) {
+                throw new ParameterException(
+                        "Parameter " + name + " should be a valid port number, found: " + value);
             }
         }
     }
