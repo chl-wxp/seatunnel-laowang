@@ -124,9 +124,54 @@ public abstract class AbstractPluginDiscovery<T> implements PluginDiscovery<T> {
         log.info("Load {} Plugin from {}", getPluginBaseClass().getSimpleName(), pluginDir);
     }
 
+    /**
+     * Load plugin mapping configuration with fallback mechanism. The loading order is:
+     *
+     * <ol>
+     *   <li>First, try to load from connector directory
+     *   <li>If not found in connector directory, load from classpath
+     * </ol>
+     *
+     * @return plugin mapping configuration
+     * @throws SeaTunnelException if plugin mapping configuration cannot be loaded from either
+     *     connector directory or classpath
+     */
     protected static Config loadConnectorPluginConfig() {
-        return ConfigFactory.parseFile(Common.connectorDir().resolve(PLUGIN_MAPPING_FILE).toFile())
-                .resolve(ConfigResolveOptions.defaults().setAllowUnresolved(true));
+        // First, try to load from connector directory
+        Path mappingFile = Common.connectorDir().resolve(PLUGIN_MAPPING_FILE);
+        if (mappingFile.toFile().exists()) {
+            try {
+                Config config =
+                        ConfigFactory.parseFile(mappingFile.toFile())
+                                .resolve(ConfigResolveOptions.defaults().setAllowUnresolved(true));
+                log.info("Loading plugin mapping from connector directory: {}", mappingFile);
+                return config;
+            } catch (Exception e) {
+                throw new SeaTunnelException(
+                        "Failed to load plugin mapping from connector directory: " + mappingFile,
+                        e);
+            }
+        }
+        // Fallback to classpath
+        if (Thread.currentThread().getContextClassLoader().getResource(PLUGIN_MAPPING_FILE)
+                != null) {
+            try {
+                Config config =
+                        ConfigFactory.parseResourcesAnySyntax(PLUGIN_MAPPING_FILE)
+                                .resolve(ConfigResolveOptions.defaults().setAllowUnresolved(true));
+                log.info("Successfully loaded plugin mapping from classpath");
+                return config;
+            } catch (Exception e) {
+                throw new SeaTunnelException(
+                        "Failed to load plugin mapping from classpath: " + PLUGIN_MAPPING_FILE, e);
+            }
+        }
+        throw new SeaTunnelException(
+                "Plugin mapping file not found in both connector directory ("
+                        + mappingFile
+                        + ") and classpath ("
+                        + PLUGIN_MAPPING_FILE
+                        + ")");
     }
 
     @Override
