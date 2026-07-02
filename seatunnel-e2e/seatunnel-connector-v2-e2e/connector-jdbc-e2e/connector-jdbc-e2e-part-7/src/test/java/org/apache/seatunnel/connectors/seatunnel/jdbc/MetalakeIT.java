@@ -96,7 +96,7 @@ public class MetalakeIT extends TestSuiteBase {
     private static final int MYSQL_PORT = 3306;
     private static final String MYSQL_URL = "jdbc:mysql://" + HOST + ":%s/%s?useSSL=false";
 
-    private static final String GRAVITINO_IMAGE = "apache/gravitino:latest";
+    private static final String GRAVITINO_IMAGE = "apache/gravitino:0.9.1";
     private static final int GRAVITINO_PORT = 8090;
     private static final String DRIVER_CLASS = "com.mysql.cj.jdbc.Driver";
     private static final String SEATUNNEL_YAML = "/config/seatunnel.yaml";

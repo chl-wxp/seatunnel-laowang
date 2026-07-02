@@ -90,6 +90,45 @@ public class ConfigBuilderTest {
 
     @Test
     @ClearEnvironmentVariable(key = "SEATUNNEL_HOME")
+    public void testParseMetadataConfigWhenProviderBeforeKind(@TempDir Path tempDir)
+            throws Exception {
+        Path configDir = tempDir.resolve("config");
+        Files.createDirectories(configDir);
+        Files.write(
+                configDir.resolve("seatunnel.yaml"),
+                Arrays.asList(
+                        "seatunnel:",
+                        "  engine:",
+                        "    metadata:",
+                        "      enabled: true",
+                        "      gravitino:",
+                        "        uri: \"http://localhost:8090/path#fragment\"",
+                        "        metalake: 'test#metalake'",
+                        "      kind: gravitino"));
+
+        String originalHome = System.getProperty("SEATUNNEL_HOME");
+        System.setProperty("SEATUNNEL_HOME", tempDir.toString());
+        try {
+            MetadataConfig metadataConfig = ConfigBuilder.parseMetadataConfigFromSeatunnelYaml();
+
+            Assertions.assertTrue(metadataConfig.isEnabled());
+            Assertions.assertEquals("gravitino", metadataConfig.getKind());
+            Assertions.assertEquals(
+                    "http://localhost:8090/path#fragment",
+                    metadataConfig.getProperties().get("uri"));
+            Assertions.assertEquals(
+                    "test#metalake", metadataConfig.getProperties().get("metalake"));
+        } finally {
+            if (originalHome == null) {
+                System.clearProperty("SEATUNNEL_HOME");
+            } else {
+                System.setProperty("SEATUNNEL_HOME", originalHome);
+            }
+        }
+    }
+
+    @Test
+    @ClearEnvironmentVariable(key = "SEATUNNEL_HOME")
     public void testParseMetadataConfigFromMissingSeatunnelYaml(@TempDir Path tempDir) {
         String originalHome = System.getProperty("SEATUNNEL_HOME");
         System.setProperty("SEATUNNEL_HOME", tempDir.toString());

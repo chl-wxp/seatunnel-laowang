@@ -64,6 +64,10 @@ public final class MetadataProviderManager {
             log.debug("MetaData Center is disabled, returning original config");
             return seaTunnelJobConfig;
         }
+        if (!hasDatasourceId(seaTunnelJobConfig)) {
+            log.debug("No metadata_datasource_id found, returning original config");
+            return seaTunnelJobConfig;
+        }
 
         String providerKind = metaDataConfig.getKind();
         log.info("Starting datasource config resolution with provider: {}", providerKind);
@@ -104,6 +108,34 @@ public final class MetadataProviderManager {
         }
 
         return ConfigFactory.parseMap(resultMap);
+    }
+
+    /**
+     * Checks whether the SeaTunnel job config contains metadata datasource references in sources or
+     * sinks.
+     *
+     * @param seaTunnelJobConfig the SeaTunnel job configuration
+     * @return true if any source or sink contains metadata_datasource_id
+     */
+    public static boolean hasDatasourceId(Config seaTunnelJobConfig) {
+        List<? extends Config> sourceConfigs =
+                TypesafeConfigUtils.getConfigList(
+                        seaTunnelJobConfig, PluginType.SOURCE.getType(), Collections.emptyList());
+        for (Config sourceConfig : sourceConfigs) {
+            if (getDatasourceId(sourceConfig).isPresent()) {
+                return true;
+            }
+        }
+
+        List<? extends Config> sinkConfigs =
+                TypesafeConfigUtils.getConfigList(
+                        seaTunnelJobConfig, PluginType.SINK.getType(), Collections.emptyList());
+        for (Config sinkConfig : sinkConfigs) {
+            if (getDatasourceId(sinkConfig).isPresent()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static Optional<TableSchema> resolveTableSchema(

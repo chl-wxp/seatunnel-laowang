@@ -367,15 +367,16 @@ public class ConfigBuilder {
 
     private static MetadataConfig parseMetadataConfig(Path yamlPath) throws Exception {
         MetadataConfig config = new MetadataConfig();
-        Map<String, String> properties = new HashMap<>();
+        Map<String, Map<String, String>> providerProperties = new HashMap<>();
         int seatunnelIndent = -1;
         int engineIndent = -1;
         int metadataIndent = -1;
         int providerIndent = -1;
+        String currentProvider = null;
         String providerKind = MetadataOptions.KIND.defaultValue();
 
         for (String line : Files.readAllLines(yamlPath)) {
-            String trimmedLine = stripComment(line).trim();
+            String trimmedLine = stripCommentOutsideQuotes(line).trim();
             if (trimmedLine.isEmpty()) {
                 continue;
             }
@@ -409,11 +410,14 @@ public class ConfigBuilder {
 
             if (indent == metadataIndent + 2) {
                 providerIndent = -1;
+                currentProvider = null;
                 KeyValue keyValue = parseKeyValue(trimmedLine);
                 if (keyValue == null) {
                     String section = parseSection(trimmedLine);
-                    if (providerKind.equalsIgnoreCase(section)) {
+                    if (section != null) {
+                        currentProvider = section;
                         providerIndent = indent;
+                        providerProperties.putIfAbsent(currentProvider, new HashMap<>());
                     }
                     continue;
                 }
@@ -430,22 +434,47 @@ public class ConfigBuilder {
             if (providerIndent >= 0 && indent == providerIndent + 2) {
                 KeyValue keyValue = parseKeyValue(trimmedLine);
                 if (keyValue != null) {
-                    properties.put(keyValue.key, keyValue.value);
+                    providerProperties
+                            .computeIfAbsent(currentProvider, ignored -> new HashMap<>())
+                            .put(keyValue.key, keyValue.value);
                 }
             }
         }
 
+        Map<String, String> properties = new HashMap<>();
+        for (Map.Entry<String, Map<String, String>> entry : providerProperties.entrySet()) {
+            if (providerKind.equalsIgnoreCase(entry.getKey()) && entry.getValue() != null) {
+                properties = entry.getValue();
+                break;
+            }
+        }
         config.setProperties(properties);
 
         return config;
     }
 
-    private static String stripComment(String line) {
-        int commentIndex = line.indexOf('#');
-        if (commentIndex < 0) {
-            return line;
+    private static String stripCommentOutsideQuotes(String line) {
+        boolean inSingleQuote = false;
+        boolean inDoubleQuote = false;
+        for (int i = 0; i < line.length(); i++) {
+            char current = line.charAt(i);
+            if (current == '\'' && !inDoubleQuote) {
+                inSingleQuote = !inSingleQuote;
+            } else if (current == '"' && !inSingleQuote && !isEscaped(line, i)) {
+                inDoubleQuote = !inDoubleQuote;
+            } else if (current == '#' && !inSingleQuote && !inDoubleQuote) {
+                return line.substring(0, i);
+            }
         }
-        return line.substring(0, commentIndex);
+        return line;
+    }
+
+    private static boolean isEscaped(String line, int index) {
+        int backslashCount = 0;
+        for (int i = index - 1; i >= 0 && line.charAt(i) == '\\'; i--) {
+            backslashCount++;
+        }
+        return backslashCount % 2 == 1;
     }
 
     private static int countLeadingSpaces(String line) {

@@ -19,7 +19,7 @@ weight: 6
 
 ### 引擎支持
 
-> **重要提示**：元数据 SPI 目前仅在 **SeaTunnel Zeta 引擎**上受支持，尚未兼容 Flink 或 Spark 引擎。
+> **重要提示**：元数据 SPI 目前支持 **SeaTunnel Zeta 引擎**和 **Flink starter**，尚未兼容 Spark 引擎。
 
 ## 使用 metadata_datasource_id
 
